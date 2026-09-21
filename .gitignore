@@ -1,0 +1,15 @@
+# Ignore everything
+*
+
+# Except directories
+!*/
+
+# And specific code/config files
+!*.c
+!*.h
+!*.v
+!*.S
+!*.ld
+!*.py
+!README.md
+!.gitignore
