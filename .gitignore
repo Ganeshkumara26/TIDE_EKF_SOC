@@ -1,15 +1,3 @@
-# Ignore everything
-*
-
-# Except directories
-!*/
-
-# And specific code/config files
-!*.c
-!*.h
-!*.v
-!*.S
-!*.ld
-!*.py
+archive_agent_deliverables/
+*.md
 !README.md
-!.gitignore
