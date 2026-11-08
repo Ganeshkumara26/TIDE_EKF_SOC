@@ -77,6 +77,25 @@ module tide_fp32_mul (
     logic [47:0] prod_s0;
     assign prod_s0 = mant_a * mant_b;
 
+    // [TIMING-1] Normalisation moved into stage 1 (latency unchanged, 2 cycles).
+    // lz(a*b) = lz(a)+lz(b) or +1, so the shift amount is known from the operands in
+    // parallel with the multiplier; only a 1-bit fix-up depends on the product.
+    function automatic [4:0] lzc24(input logic [23:0] v);
+        integer i;
+        begin
+            lzc24 = 5'd24;
+            for (i = 0; i < 24; i = i + 1) begin
+                if (v[23-i] && (lzc24 == 5'd24)) lzc24 = i[4:0];
+            end
+        end
+    endfunction
+    logic [6:0]  base_s0, nlz_s0;
+    logic [47:0] prod_sh_s0, norm48_s0;
+    assign base_s0    = {2'b0, lzc24(mant_a)} + {2'b0, lzc24(mant_b)};
+    assign prod_sh_s0 = prod_s0 << base_s0;
+    assign norm48_s0  = prod_sh_s0[47] ? prod_sh_s0 : {prod_sh_s0[46:0], 1'b0};
+    assign nlz_s0     = base_s0 + {6'b0, ~prod_sh_s0[47]};
+
     // Special-case classification
     logic any_nan_s0, invalid_s0;
     logic result_is_nan_s0, result_is_inf_s0, result_is_zero_s0;
@@ -93,7 +112,8 @@ module tide_fp32_mul (
     logic               valid_s1;
     logic               sign_r_s1;
     logic signed [10:0] exp_sum_s1;
-    logic [47:0]        prod_s1;
+    logic [47:0]        norm48_s1;
+    logic [5:0]         nlz_s1;
     logic               result_is_nan_s1, result_is_inf_s1, result_is_zero_s1, invalid_s1;
 
     always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -101,7 +121,8 @@ module tide_fp32_mul (
             valid_s1          <= 1'b0;
             sign_r_s1         <= 1'b0;
             exp_sum_s1        <= '0;
-            prod_s1           <= '0;
+            norm48_s1         <= '0;
+            nlz_s1            <= '0;
             result_is_nan_s1  <= 1'b0;
             result_is_inf_s1  <= 1'b0;
             result_is_zero_s1 <= 1'b0;
@@ -110,7 +131,8 @@ module tide_fp32_mul (
             valid_s1          <= valid_i;
             sign_r_s1         <= sign_r_s0;
             exp_sum_s1        <= exp_sum_s0;
-            prod_s1           <= prod_s0;
+            norm48_s1         <= norm48_s0;
+            nlz_s1            <= nlz_s0[5:0];
             result_is_nan_s1  <= result_is_nan_s0;
             result_is_inf_s1  <= result_is_inf_s0;
             result_is_zero_s1 <= result_is_zero_s0;
@@ -122,22 +144,11 @@ module tide_fp32_mul (
     // Stage 2: normalize, round (RNE), pack
     // =====================================================================
 
-    // Leading-zero count of the 48-bit product (0 if prod_s1==0, but that
-    // case is masked off by result_is_zero_s1 so it never reaches packing).
-    function automatic [5:0] lzc48(input logic [47:0] v);
-        integer i;
-        begin
-            lzc48 = 6'd48;
-            for (i = 0; i < 48; i = i + 1) begin
-                if (v[47-i] && (lzc48 == 6'd48)) lzc48 = i[5:0];
-            end
-        end
-    endfunction
-
+    // [TIMING-1] normalised product and its leading-zero count come from stage 1
     logic [5:0]  nlz_s2;
     logic [47:0] norm48_s2;
-    assign nlz_s2    = lzc48(prod_s1);
-    assign norm48_s2 = prod_s1 << nlz_s2;
+    assign nlz_s2    = nlz_s1;
+    assign norm48_s2 = norm48_s1;
 
     logic [23:0] mant24_norm_s2;
     logic        guard_norm_s2, round_norm_s2, sticky_norm_s2;

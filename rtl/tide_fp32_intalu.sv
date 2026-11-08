@@ -1,14 +1,30 @@
 // -------------------------------------------------------------------
 // tide_fp32_intalu.sv — Integer ALU + ITOF (int32 -> binary32, RNE)
 // Source spec: doc/design/04_tide_fp32_intalu.md
-// Owner: Agent 2
 //
-// Single-cycle latency, fully combinational datapath with a registered
-// output (1 op/cycle throughput, no pipelining needed for this unit).
+// NOTE (fixed during integration): this module's outputs (result_o,
+// valid_o, cmp_result_o, zero_o) were previously registered one cycle
+// behind their combinational inputs. The frozen contract
+// (shared/contract/timing.yaml, int_alu section) is unambiguous:
+// "result_o: combinational (valid same cycle as valid_i)", "latency: 0
+// cycles (combinational)", with the caller (sequencer or PCPI) expected to
+// consume the result on the *same* cycle valid_i is asserted, for
+// same-posedge write-back. The registered version silently violated this:
+// confirmed as a real, live defect via cross-package integration testing
+// (Agent 5's PCPI FITOF path), where the caller's own FSM correctly
+// assumed 0-cycle latency and captured the ALU's output exactly one
+// cycle too early on every request, so each completion actually returned
+// the *previous* request's answer. Fixed to genuinely combinational
+// outputs; the datapath itself (ITOF conversion, IADD/ISUB/ICMP/etc.) was
+// already correct and is unchanged, only the always_ff on the output side
+// is removed.
 // -------------------------------------------------------------------
 module tide_fp32_intalu (
-    input  logic        clk_i,
-    input  logic        rst_ni,
+    /* verilator lint_off UNUSEDSIGNAL */
+    input  logic        clk_i,   // unused: module is now fully combinational
+                                  // (kept for interface/instantiation compatibility)
+    input  logic        rst_ni,  // unused: no state to reset
+    /* verilator lint_on UNUSEDSIGNAL */
 
     input  logic        valid_i,
     input  logic [3:0]  op_i,
@@ -103,18 +119,10 @@ module tide_fp32_intalu (
         endcase
     end
 
-    always_ff @(posedge clk_i or negedge rst_ni) begin
-        if (!rst_ni) begin
-            valid_o      <= 1'b0;
-            result_o     <= 32'h0;
-            cmp_result_o <= 1'b0;
-            zero_o       <= 1'b0;
-        end else begin
-            valid_o      <= valid_i;
-            result_o     <= result_comb;
-            cmp_result_o <= cmp_lt_comb;
-            zero_o       <= (result_comb == 32'h0);
-        end
-    end
+    // Combinational outputs per timing.yaml (int_alu: latency 0 cycles).
+    assign valid_o      = valid_i;
+    assign result_o     = result_comb;
+    assign cmp_result_o = cmp_lt_comb;
+    assign zero_o       = (result_comb == 32'h0);
 
 endmodule

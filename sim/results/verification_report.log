@@ -1,0 +1,58 @@
+================================================================================
+TIDE EKF COPROCESSOR — RTL ARITHMETIC & ENGINE VERIFICATION SUITE
+Generated: \2026-11-08 09:29:16 UTC\
+Engine Target: SCL 180nm CMOS 1P6M & Monolithic Integration
+================================================================================
+
+--- 1. FP32 ADDER / SUBTRACTOR DIRECTED TESTBENCH ---
+rtl/tide_fp32_add.sv:75: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:75: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:75: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:75: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:75: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:75: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:75: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:75: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:314: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:314: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:314: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:314: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:351: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:351: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:411: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:411: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:452: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:452: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_add.sv:562: vvp.tgt sorry: Case unique/unique0 qualities are ignored.
+========================================
+ADD DIRECTED: 20 passed, 0 failed
+========================================
+
+--- 2. FP32 MULTIPLIER DIRECTED TESTBENCH ---
+rtl/tide_fp32_mul.sv:41: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:41: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:41: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:41: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:41: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:41: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:41: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:41: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:196: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:196: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:196: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:196: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:235: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+rtl/tide_fp32_mul.sv:235: sorry: constant selects in always_* processes are not currently supported (all bits will be included).
+========================================
+MUL DIRECTED: 12 passed, 0 failed
+========================================
+
+--- 3. FP32 INTALU DIRECTED TESTBENCH ---
+rtl/tide_fp32_intalu.sv:109: vvp.tgt sorry: Case unique/unique0 qualities are ignored.
+========================================
+INTALU DIRECTED: 16 passed, 0 failed
+========================================
+
+================================================================================
+ALL ARITHMETIC UNIT DIRECTED VECTORS PASSED (48/48 bit-exact)
+================================================================================

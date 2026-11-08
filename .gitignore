@@ -1,3 +1,34 @@
-archive_agent_deliverables/
+# Documentation policy: only README.md is committed
 *.md
 !README.md
+!docs/
+!docs/**
+
+# Scratch and agentic scripts
+patch_*.py
+debug_*.py
+probe_*.py
+test_run_*.py
+
+# Untracked legacy agent and temporary directories
+_archive_v1/
+agents/
+archive_agent_deliverables/
+temp_extract/
+doc/
+ext/
+
+# Intermediate build and simulation artifacts
+*.vvp
+*.vcd
+*.log
+!sim/results/*.log
+*.pyc
+__pycache__/
+*.o
+*.a
+*.so
+*.out
+*.exe
+tide_test
+obj_dir/

@@ -1,0 +1,6 @@
+[submodule "submodules/scl_subnorm_fp32_tapeout"]
+	path = submodules/scl_subnorm_fp32_tapeout
+	url = https://github.com/Ganeshkumara26/scl_subnorm_fp32_tapeout.git
+[submodule "submodules/scl_tide_late_tapeout"]
+	path = submodules/scl_tide_late_tapeout
+	url = https://github.com/Ganeshkumara26/scl_tide_late_tapeout.git

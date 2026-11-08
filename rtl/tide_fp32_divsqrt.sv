@@ -36,6 +36,27 @@ module tide_fp32_divsqrt (
     output logic [4:0]  flags_o       // {invalid, div_by_zero, overflow, underflow, inexact}
 );
 
+    // NOTE: an integration pass briefly changed SQRT_CYCLES 27->26 after
+    // measuring (in an isolated testbench with its own edge-counting
+    // convention) an apparent off-by-one against timing.yaml's "Sqrt:
+    // exactly 27 cycles from start_i to done_o". That change was reverted:
+    // it broke this module's own directed regression (tb_fp32_divsqrt.sv),
+    // whose check() task uses a specific, deliberate edge-counting
+    // convention documented at its call site, and -- more importantly --
+    // changing SQRT_CYCLES changes total_r, which changes how many actual
+    // digit-recurrence iterations the algorithm runs; reducing it by one
+    // was never verified to still produce numerically correct results (the
+    // directed test's value check is short-circuited when the latency
+    // check fails first, so "latency wrong" does not by itself mean "value
+    // also wrong," but it does mean the value was never actually verified
+    // under the changed constant either). The real, PCPI-level defect this
+    // was chasing (300/300 random FSQRT vectors failing tb_pcpi.sv's
+    // cycles==28 check) is real and still open -- see PROVENANCE.md / the
+    // consolidation matrix -- but the fix belongs either in reconciling the
+    // two edge-counting conventions (this module's own testbench vs.
+    // tide_pcpi.sv's cycle counter) or in tide_pcpi.sv's expect_total/
+    // exp_cycles tables, not in changing this module's iteration count
+    // without re-verifying convergence.
     localparam int DIV_CYCLES  = 28;
     localparam int SQRT_CYCLES = 27;
 
@@ -71,7 +92,7 @@ module tide_fp32_divsqrt (
                 r.exp     = $signed({2'b0, exp_raw});
                 r.is_zero = 1'b0;
             end
-            return r;
+            normalize_operand = r;
         end
     endfunction
 
@@ -429,9 +450,17 @@ module tide_fp32_divsqrt (
                     // Last recurrence step just completed (R/Q are final).
                     // Latch the rounded/packed result, but don't assert
                     // done_o until the following cycle (see finalize_r above).
+                    // [INTEGRATION FIX I-DS-1] done_r is itself a registered
+                    // output, so it can be raised on the same edge that latches
+                    // result_r; the extra finalize hold cycle made the lane one
+                    // cycle slower than the contract every consumer assumes
+                    // (tide_sim.py: DIV t+28 / SQRT t+27 as the cycle the RF write
+                    // happens; measured in tide_engine: 29/28). The digit
+                    // recurrence (total_r iterations) is untouched.
                     result_r   <= final_result_comb;
                     flags_r    <= final_flags_comb;
-                    finalize_r <= 1'b1;
+                    busy_r     <= 1'b0;
+                    done_r     <= 1'b1;
                 end else begin
                     cnt_r <= cnt_r + 5'd1;
                     if (op_r) begin

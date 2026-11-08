@@ -21,10 +21,16 @@ module tide_const_rom (
             6'd8:  data_o = 32'h3ED413CD; // tan(pi/8)
             6'd9:  data_o = 32'h401A827A; // cot(pi/8)
             6'd10: data_o = 32'h3F490FDB; // pi/4
-            6'd11: data_o = 32'h3F7FFFF5; // atan_c0
-            6'd12: data_o = 32'hBEAAA52E; // atan_c1
-            6'd13: data_o = 32'h3E4C7B66; // atan_c2
-            6'd14: data_o = 32'hBE084A28; // atan_c3
+            // Fixed (see ENGINEERING_LOG.md A.3): these four words were
+            // built against an earlier value table that doesn't match the
+            // golden model's own compiled/verified atan-polynomial
+            // coefficients (golden/vectors/rom_final.hex). Corrected to
+            // the golden model's actual values, confirmed by direct RTL
+            // simulation (0/64 words differ after this fix).
+            6'd11: data_o = 32'h3DA4F0D1; // atan_c0
+            6'd12: data_o = 32'hBE0E1B85; // atan_c1
+            6'd13: data_o = 32'h3E4C925F; // atan_c2
+            6'd14: data_o = 32'hBEAAAA2A; // atan_c3
             6'd15: data_o = 32'h3727C5AC; // 1e-5 (floor)
             6'd16: data_o = 32'h322BCC77; // 1e-8
             6'd17: data_o = 32'h3F000000; // 0.5

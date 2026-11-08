@@ -51,7 +51,9 @@ module tide_fp32_add (
     localparam logic [2:0] OP_MAX = 3'b100;
     localparam logic [2:0] OP_ABS = 3'b101;
     localparam logic [2:0] OP_NEG = 3'b110;
-    localparam logic [2:0] OP_SEL = 3'b111;
+    // Renamed from OP_SEL during integration -- see the FMOV/SEL note below
+    // (encoding unchanged: 3'b111, matches isa.yaml add_ops FMOV).
+    localparam logic [2:0] OP_MOV = 3'b111;
 
     logic is_pipelined_op;
     assign is_pipelined_op = (op_i == OP_ADD) || (op_i == OP_SUB);
@@ -428,8 +430,23 @@ module tide_fp32_add (
     end
 
     // MIN/MAX (IEEE-754-2008 minNum/maxNum: NaN operand ignored)
+    //
+    // NOTE (fixed during integration): the general-purpose cmp_lt_comb
+    // treats +0.0 and -0.0 as equal (a_zero_c && b_zero_c -> cmp_eq_comb=1,
+    // cmp_lt_comb=0), which is correct for FCMP but is NOT the rule MIN/MAX
+    // need when magnitudes are equal: minNum/maxNum must still pick a
+    // definite, sign-aware side between +0 and -0 (min prefers the negative
+    // operand, max prefers the positive one). Reusing cmp_lt_comb directly
+    // for the minmax mux silently fell through to "pick a" whenever
+    // cmp_lt_comb was 0, which is right for ordinary a>b cases but wrong for
+    // the equal-magnitude / signed-zero case specifically. Confirmed as a
+    // real, live defect via cross-package integration testing (Agent 5's
+    // PCPI gate, whose DPI reference model implements exactly the
+    // sign-aware ±0 rule below): MAX(-0.0, +0.0) returned -0.0 instead of
+    // +0.0. Fixed with an explicit equal-magnitude/signed-zero branch that
+    // does not go through cmp_lt_comb at all.
     logic minmax_a_lt_b_comb;
-    assign minmax_a_lt_b_comb = cmp_lt_comb; // same comparator, reused
+    assign minmax_a_lt_b_comb = cmp_lt_comb; // same comparator, reused (non-zero-tie case only)
 
     logic [31:0] min_result_comb, max_result_comb;
     always_comb begin
@@ -442,26 +459,67 @@ module tide_fp32_add (
         end else if (b_nan_c) begin
             min_result_comb = a_i;
             max_result_comb = a_i;
+        end else if (a_zero_c && b_zero_c) begin
+            // equal magnitude (both zero): sign-aware tie-break, NOT cmp_lt_comb.
+            min_result_comb = (a_i[31] || b_i[31]) ? (a_i[31] ? a_i : b_i) : a_i;
+            max_result_comb = (!a_i[31] || !b_i[31]) ? (!a_i[31] ? a_i : b_i) : a_i;
         end else begin
             min_result_comb = minmax_a_lt_b_comb ? a_i : b_i;
             max_result_comb = minmax_a_lt_b_comb ? b_i : a_i;
         end
     end
 
-    // ABS / NEG: pure bit-level sign manipulation, no NaN special-casing.
-    // (doc19 describes NEG(NaN) as "qNaN with sign flipped" and ABS(NaN) as
-    // "qNaN with sign 0" -- this is exactly what the unconditional bit
-    // operations below produce mechanically for any NaN input, since
-    // flipping/clearing bit31 does not change the exp=0xFF/frac!=0
-    // NaN-classifying bits. No extra canonicalization logic is needed or
-    // wanted here: doc40's executable SVA P4/P5 check exactly this
-    // unconditional behavior. See ASSUMPTIONS.md [A-ADD-2].)
+    // ABS / NEG.
+    //
+    // NOTE (fixed during integration): this package's own ASSUMPTIONS.md
+    // [A-ADD-2] argued that an unconditional bit-level sign manipulation
+    // "is exactly what" doc19's "qNaN with sign flipped/0" requires for NaN
+    // inputs, on the reasoning that flipping/clearing bit31 doesn't change
+    // the exp=0xFF/frac!=0 bits that classify something as NaN. That
+    // reasoning proves the result is *a* NaN, but not that it is *the*
+    // canonical qNaN doc19 actually names: doc19's table (sec.1) says
+    // "qNaN with sign bit 0" / "qNaN with sign bit flipped", i.e. the single
+    // canonical bit pattern 0x7FC00000 with the sign bit set as described --
+    // not "some NaN with the same payload as the input, sign-adjusted".
+    // Any input NaN with a nonzero payload (signalling or quiet, non-
+    // canonical) fails that reading under the old unconditional-bitflip
+    // implementation, e.g. FNEG(0xFFD0FC80) produced 0x7FD0FC80 (still a
+    // NaN, but not 0xFFC00000). Confirmed as a real, live defect via
+    // cross-package integration testing (Agent 5's PCPI gate, whose DPI
+    // reference model canonicalizes explicitly: `isnan_u(a) ? (QNAN ^ sign)
+    // : (a ^ sign)`), which is also the more natural reading of doc19's own
+    // wording. Fixed to canonicalize any NaN input to 0x7FC00000 before
+    // applying the sign operation; non-NaN inputs are untouched bit
+    // manipulation as before.
     logic [31:0] abs_result_comb, neg_result_comb;
-    assign abs_result_comb = {1'b0, a_i[30:0]};
-    assign neg_result_comb = {~a_i[31], a_i[30:0]};
+    assign abs_result_comb = a_nan_c ? 32'h7FC00000 : {1'b0, a_i[30:0]};
+    assign neg_result_comb = a_nan_c ? 32'hFFC00000 : {~a_i[31], a_i[30:0]};
 
-    // cmp_lt_o / cmp_eq_o: held from the most recent CMP result, used by a
-    // later SEL op (see doc §4 "Select A if cmp_lt_o from previous compare").
+    // cmp_lt_o / cmp_eq_o: held from the most recent CMP result.
+    //
+    // NOTE (fixed during integration): op 3'b111 was implemented here as a
+    // "SEL" (conditional select: a if cmp_lt_o from a previous CMP, else b),
+    // per this package's own doc/design/02_tide_fp32_add.md sec.4. That doc
+    // predates and is superseded by the frozen machine-readable contract
+    // (shared/contract/isa.yaml add_ops table), which assigns 3'b111 to
+    // FMOV -- a plain single-operand passthrough (result = a, b unused) --
+    // and by the real, G1-verified assembler/microcode (tools/tide_asm.py's
+    // ADD_OPS = {..., 'FMOV': 7}, ADD_UNARY = {'FABS','FNEG','FMOV'}, used
+    // live throughout microcode/10_unit_pre.tasm's MOV instructions). There
+    // is no SEL concept anywhere in the actual assembler or microcode: a
+    // grep of the whole real toolchain for "SEL" or "cmp_lt_o"-style
+    // conditional-select usage returns nothing. Confirmed as a genuine
+    // defect (not just a naming mismatch) by wiring this module into
+    // Agent 5's real PCPI/SoC integration and rerunning its V2 gate: FMOV
+    // (funct7=11) requests returned b instead of a on any vector where
+    // cmp_lt_hold happened to be low, exactly matching the doc-conflict
+    // above (see PROVENANCE.md). Fixed to implement literal FMOV per
+    // isa.yaml/tide_asm.py, which both outrank the stale design doc per the
+    // project's own contract precedence (Step 0 > frozen contract > design
+    // docs). cmp_lt_hold/cmp_eq_hold and the cmp_lt_o/cmp_eq_o ports are
+    // kept unchanged -- they are FCMP's own registered result and may still
+    // be consumed elsewhere; only the former OP_SEL (now OP_MOV) bypass-mux
+    // case is corrected.
     logic cmp_lt_hold, cmp_eq_hold;
     always_ff @(posedge clk_i or negedge rst_ni) begin
         if (!rst_ni) begin
@@ -475,18 +533,40 @@ module tide_fp32_add (
     assign cmp_lt_o = cmp_lt_hold;
     assign cmp_eq_o = cmp_eq_hold;
 
-    logic [31:0] sel_result_comb;
-    assign sel_result_comb = cmp_lt_hold ? a_i : b_i;
+    // FMOV (op 3'b111, isa.yaml add_ops): pure passthrough of a_i, b_i unused.
+    logic [31:0] fmov_result_comb;
+    assign fmov_result_comb = a_i;
+
+    // FCMP numeric result: 1 if a<b (ordered and strictly less), else 0.
+    //
+    // NOTE (fixed during integration): previously CMP produced a fixed 0
+    // ("no numeric result defined") on the reasoning that the sequencer-side
+    // microcode only consumes cmp_lt_o/cmp_eq_o as a side-channel and
+    // defaults FCMP's rd field to the sink register (tools/tide_asm.py:
+    // `if m == 'FCMP': ... rd, ra, rb = R_ZERO, ...` when rd is omitted).
+    // That is true for the microcode path, but FCMP is also reachable via
+    // the PCPI custom-instruction path (a RISC-V custom-1 instruction must
+    // write *some* value to rd), which has its own, independently-checked
+    // contract requiring the numeric result to carry the boolean comparison
+    // outcome. Confirmed as a real, live defect via cross-package
+    // integration testing (Agent 5's PCPI gate, whose DPI reference model
+    // returns exactly `(!unordered && a<b) ? 1u : 0u`). Fixed to match;
+    // this is additive only (a real, optional rd on the microcode side can
+    // now legitimately capture the comparison outcome too, which is
+    // consistent with -- not a violation of -- the sequencer-side contract).
+    logic [31:0] cmp_result_comb;
+    assign cmp_result_comb = {31'b0, cmp_lt_comb};
 
     logic [31:0] bypass_result_comb;
     always_comb begin
         unique case (op_i)
+            OP_CMP: bypass_result_comb = cmp_result_comb;
             OP_MIN: bypass_result_comb = min_result_comb;
             OP_MAX: bypass_result_comb = max_result_comb;
             OP_ABS: bypass_result_comb = abs_result_comb;
             OP_NEG: bypass_result_comb = neg_result_comb;
-            OP_SEL: bypass_result_comb = sel_result_comb;
-            default: bypass_result_comb = 32'h0; // CMP: no numeric result defined
+            OP_MOV: bypass_result_comb = fmov_result_comb;
+            default: bypass_result_comb = 32'h0;
         endcase
     end
 
